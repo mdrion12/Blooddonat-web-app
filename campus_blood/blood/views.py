@@ -1,13 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import AuthenticationForm
-from .models import Donor, Request
-from .forms import DonorForm, CustomUserCreationForm, CustomAuthenticationForm ,DonationHistoryForm
+from .models import Donor, Request, DonationHistory
+from .forms import DonorForm, CustomUserCreationForm, CustomAuthenticationForm, DonationHistoryForm
 from django.http import JsonResponse
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import Donor, DonationHistory
+
 
 # --- Home ---
 def home(request):
@@ -55,10 +54,8 @@ def dashboard(request):
     except Donor.DoesNotExist:
         donor_profile = None
 
-    # শুধুমাত্র available=True থাকা donor exclude current user
     donors = Donor.objects.filter(available=True).exclude(user=user)
-
-    my_requests = Request.objects.filter(requester=user) if 'Request' in globals() else []
+    my_requests = Request.objects.filter(requester=user)
 
     context = {
         'donor_profile': donor_profile,
@@ -69,16 +66,13 @@ def dashboard(request):
 
 
 # --- Donor Section ---
-
 @login_required
 def donor_list(request):
     blood_group = request.GET.get('blood_group')
-
     if blood_group:
         donors = Donor.objects.filter(available=True, blood_group=blood_group)
     else:
         donors = Donor.objects.filter(available=True)
-
     return render(request, 'blood/donor_list.html', {'donors': donors, 'selected_group': blood_group})
 
 
@@ -87,7 +81,7 @@ def donor_requests(request):
     try:
         donor = Donor.objects.get(user=request.user)
     except Donor.DoesNotExist:
-        return redirect('profile')
+        return redirect('create_donor_profile')
     requests = donor.requests.all()
     return render(request, 'blood/donor_requests.html', {'requests': requests})
 
@@ -95,9 +89,9 @@ def donor_requests(request):
 # --- Request Section ---
 @login_required
 def request_donor(request, donor_id):
-    donor = Donor.objects.get(id=donor_id)
+    donor = get_object_or_404(Donor, id=donor_id)
     if request.method == 'POST':
-        reason = request.POST['reason']
+        reason = request.POST.get('reason', '')
         req = Request.objects.create(
             donor=donor,
             requester=request.user,
@@ -105,17 +99,17 @@ def request_donor(request, donor_id):
         )
 
         # Send email to donor
-        subject = "New Blood Request Received"
-        message = f"Hello {donor.user.username},\n\nYou have received a new blood request from {request.user.username}.\nReason: {reason}\n\nPlease check your dashboard to respond."
-        recipient = donor.user.email
-        send_mail(subject, message, settings.EMAIL_HOST_USER, [recipient], fail_silently=True)
+        if donor.user.email:
+            subject = "New Blood Request Received"
+            message = f"Hello {donor.user.username},\n\nYou have received a new blood request from {request.user.username}.\nReason: {reason}\n\nPlease check your dashboard to respond."
+            send_mail(subject, message, settings.EMAIL_HOST_USER, [donor.user.email], fail_silently=True)
 
         return render(request, 'blood/request_sent.html', {'donor': donor})
     return render(request, 'blood/request_form.html', {'donor': donor})
 
+
 @login_required
 def create_donor_profile(request):
-    # যদি donor already থাকে, redirect directly to profile
     if Donor.objects.filter(user=request.user).exists():
         return redirect('profile')
 
@@ -125,14 +119,12 @@ def create_donor_profile(request):
         department = request.POST.get('department')
         profile_pic = request.FILES.get('profile_pic')
 
-        # Validate required fields
         if not blood_group or not phone or not department:
             return render(request, 'blood/create_donor.html', {
                 'error': "Please fill in all required fields!"
             })
 
-        # Create donor profile
-        donor = Donor.objects.create(
+        Donor.objects.create(
             user=request.user,
             blood_group=blood_group,
             phone=phone,
@@ -144,32 +136,21 @@ def create_donor_profile(request):
     return render(request, 'blood/create_donor.html')
 
 
-
-
 @login_required
 def profile(request):
-    """
-    Donor profile view
-    - যদি donor না থাকে → redirect to create_donor_profile
-    - যদি থাকে → show profile
-    """
     try:
         donor_profile = Donor.objects.get(user=request.user)
     except Donor.DoesNotExist:
         return redirect('create_donor_profile')
 
-    # =========================
-    # Update donation info automatically
-    # =========================
-    # 1. Last donation date
+    # Update last donation & count
     last_donation = DonationHistory.objects.filter(donor=donor_profile).order_by('-date').first()
     donor_profile.last_donation_date = last_donation.date if last_donation else None
-
-    # 2. Total donation count
     donor_profile.donation_count = DonationHistory.objects.filter(donor=donor_profile).count()
-    # =========================
+    donor_profile.save()
 
     return render(request, 'blood/profile.html', {'donor_profile': donor_profile})
+
 
 @login_required
 def toggle_availability(request):
@@ -184,20 +165,16 @@ def toggle_availability(request):
 
 @login_required
 def respond_request(request, req_id, status):
-    try:
-        req = Request.objects.get(id=req_id, donor__user=request.user)
-    except Request.DoesNotExist:
-        return redirect('donor_requests')
+    req = get_object_or_404(Request, id=req_id, donor__user=request.user)
 
     if status in ['Approved', 'Rejected']:
         req.status = status
         req.save()
 
-        # Send email to requester
-        subject = f"Your Blood Request has been {status}"
-        message = f"Hello {req.requester.username},\n\nYour blood request to {req.donor.user.username} has been {status.lower()}.\n\nThank you for using Campus Blood!"
-        recipient = req.requester.email
-        send_mail(subject, message, settings.EMAIL_HOST_USER, [recipient], fail_silently=True)
+        if req.requester.email:
+            subject = f"Your Blood Request has been {status}"
+            message = f"Hello {req.requester.username},\n\nYour blood request to {req.donor.user.username} has been {status.lower()}.\n\nThank you for using Campus Blood!"
+            send_mail(subject, message, settings.EMAIL_HOST_USER, [req.requester.email], fail_silently=True)
 
     return redirect('donor_requests')
 
@@ -210,36 +187,36 @@ def edit_profile(request):
         form = DonorForm(request.POST, request.FILES, instance=donor_profile)
         if form.is_valid():
             donor = form.save(commit=False)
-            # Manual donation_count update
             donation_count = request.POST.get('donation_count')
-            if donation_count is not None:
+            if donation_count:
                 try:
                     donor.donation_count = int(donation_count)
                 except ValueError:
-                    donor.donation_count = donor.donation_count 
+                    pass
             donor.save()
             return redirect('profile')
     else:
         form = DonorForm(instance=donor_profile)
 
-    return render(request, 'blood/edit_profile.html', {
-        'form': form,
-        'donor_profile': donor_profile  
-    })
+    return render(request, 'blood/edit_profile.html', {'form': form, 'donor_profile': donor_profile})
 
 
 @login_required
 def add_donation(request):
     donor = get_object_or_404(Donor, user=request.user)
-    
+
     if request.method == 'POST':
         form = DonationHistoryForm(request.POST)
         if form.is_valid():
             donation = form.save(commit=False)
             donation.donor = donor
-            donation.save()  # signal auto update করবে donation_count & last_donation_date
+            donation.save()
+            # Update profile automatically
+            donor.last_donation_date = donation.date
+            donor.donation_count = DonationHistory.objects.filter(donor=donor).count()
+            donor.save()
             return redirect('profile')
     else:
         form = DonationHistoryForm()
-    
+
     return render(request, 'blood/add_donation.html', {'form': form})
