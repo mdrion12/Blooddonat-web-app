@@ -1,0 +1,2 @@
+web: gunicorn campus_blood.wsgi
+
