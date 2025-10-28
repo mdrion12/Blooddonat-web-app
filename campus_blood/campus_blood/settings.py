@@ -5,9 +5,10 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings
-SECRET_KEY = 'django-insecure-1wdw#-v0^0*n#p6bpr^wrib67c_^jx3))yh+88=aouslu(06^u'
-DEBUG = True
-ALLOWED_HOSTS = []
+SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key-for-dev')
+DEBUG = False
+ALLOWED_HOSTS = ['icereddot.onrender.com', 'www.icereddot.onrender.com']
+ # Replace with your actual Render domain
 
 # Application definition
 INSTALLED_APPS = [
@@ -94,6 +95,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'reon128633@gmail.com'
-EMAIL_HOST_PASSWORD = 'diyk ahyg bqkk rnrg'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
