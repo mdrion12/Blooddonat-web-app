@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings
 SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key-for-dev')
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['icereddot.onrender.com', 'www.icereddot.onrender.com']
  # Replace with your actual Render domain
 
@@ -98,3 +98,4 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
